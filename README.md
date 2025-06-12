@@ -203,5 +203,3 @@ curl "http://localhost:8000/api/v1/stocks/sentiment/aggregate?symbol=AAPL&start_
 
 ---
 
-## License
-[MIT](LICENSE) © 2025 NexusSentinel Contributors
