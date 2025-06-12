@@ -39,6 +39,7 @@ __all__ = [
 ]
 
 # Create router
+# All stock-related routes are served under `/stocks`
 router = APIRouter(prefix="/stocks", tags=["Stocks"])
 
 
@@ -90,7 +91,7 @@ class StockCoreResponse(StockCoreCreate):
 class SentimentAnalysisCreate(BaseModel):
     """Schema for submitting new sentiment analysis results."""
     symbol: str = Field(..., description="Stock ticker symbol", example="AAPL")
-    date: date = Field(..., description="Date of sentiment data", example="2025-06-11")
+    date_value: date = Field(..., description="Date of sentiment data", example="2025-06-11", alias="date")
     # NOTE: validation for allowed sources can be added with a validator or Literal
     source: str = Field(..., description="Source of sentiment data", example="news")
     sentiment_score: float = Field(..., description="Sentiment score (-1.0 to 1.0)", example=0.75, ge=-1.0, le=1.0)
@@ -116,7 +117,8 @@ class SentimentAnalysisCreate(BaseModel):
                     "url": "https://example.com/article"
                 }
             }
-        }
+        },
+        populate_by_name=True
     )
 
 
@@ -555,6 +557,9 @@ async def create_sentiment_analysis(
             detail=f"Stock with symbol '{sentiment_data.symbol}' not found"
         )
     
+    # Get the date value from the alias field
+    date_value = sentiment_data.date_value
+    
     # Create new sentiment entry based on source type
     if sentiment_data.source == 'news':
         # Create a news entry with sentiment
@@ -564,7 +569,7 @@ async def create_sentiment_analysis(
             url=sentiment_data.source_details.get('url', '#') if sentiment_data.source_details else '#',
             source=sentiment_data.source_details.get('publisher', 'Unknown') if sentiment_data.source_details else 'Unknown',
             author=sentiment_data.source_details.get('author') if sentiment_data.source_details else None,
-            published_at=datetime.combine(sentiment_data.date, datetime.min.time()),
+            published_at=datetime.combine(date_value, datetime.min.time()),
             content=sentiment_data.content_sample,
             sentiment_score=sentiment_data.sentiment_score,
             sentiment_label=sentiment_data.sentiment_label,
@@ -579,7 +584,7 @@ async def create_sentiment_analysis(
             stock_id=stock.stock_id,
             platform=sentiment_data.source,
             post_text=sentiment_data.content_sample[:1000] if sentiment_data.content_sample else f"Post about {stock.symbol}",
-            created_at=datetime.combine(sentiment_data.date, datetime.min.time()),
+            created_at=datetime.combine(date_value, datetime.min.time()),
             sentiment_score=sentiment_data.sentiment_score,
             user_id=sentiment_data.source_details.get('user_id') if sentiment_data.source_details else None,
             post_url=sentiment_data.source_details.get('url') if sentiment_data.source_details else None,
@@ -596,7 +601,7 @@ async def create_sentiment_analysis(
     query = select(StocksSentimentDailySummary).where(
         and_(
             StocksSentimentDailySummary.stock_id == stock.stock_id,
-            StocksSentimentDailySummary.date == sentiment_data.date
+            StocksSentimentDailySummary.date == date_value
         )
     )
     result = await db.execute(query)
@@ -606,7 +611,7 @@ async def create_sentiment_analysis(
         # Create new summary if it doesn't exist
         daily_summary = StocksSentimentDailySummary(
             stock_id=stock.stock_id,
-            date=sentiment_data.date,
+            date=date_value,
         )
         db.add(daily_summary)
     
@@ -651,7 +656,7 @@ async def create_sentiment_analysis(
     
     # Determine sentiment trend
     # Get previous day's sentiment
-    yesterday = sentiment_data.date - timedelta(days=1)
+    yesterday = date_value - timedelta(days=1)
     query = select(StocksSentimentDailySummary.overall_sentiment_score).where(
         and_(
             StocksSentimentDailySummary.stock_id == stock.stock_id,
@@ -679,7 +684,7 @@ async def create_sentiment_analysis(
         "id": sentiment_id,
         "stock_id": stock.stock_id,
         "symbol": stock.symbol,
-        "date": sentiment_data.date,
+        "date": date_value,
         "source": sentiment_data.source,
         "sentiment_score": sentiment_data.sentiment_score,
         "sentiment_label": sentiment_data.sentiment_label,

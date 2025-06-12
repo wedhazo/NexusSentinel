@@ -35,13 +35,43 @@ const TopBottomSentiment: React.FC = () => {
       try {
         setLoading(true);
         const response = await axios.get<TopBottomStocksResponse>(
+          // Correct backend route (stocks router is already prefixed with `/stocks`)
           `${import.meta.env.VITE_API_URL}/api/v1/stocks/top-bottom-20`
         );
         setData(response.data);
         setError(null);
       } catch (err) {
         console.error('Error fetching sentiment data:', err);
-        setError('Failed to load sentiment data. Please try again later.');
+        // If the API request fails, use mock data for demonstration
+        const mockData: TopBottomStocksResponse = {
+          top_20: [
+            { symbol: 'AAPL', sentiment_score: 0.95, date: '2025-06-12' },
+            { symbol: 'MSFT', sentiment_score: 0.92, date: '2025-06-12' },
+            { symbol: 'GOOGL', sentiment_score: 0.88, date: '2025-06-12' },
+            { symbol: 'AMZN', sentiment_score: 0.85, date: '2025-06-12' },
+            { symbol: 'TSLA', sentiment_score: 0.82, date: '2025-06-12' },
+            { symbol: 'META', sentiment_score: 0.79, date: '2025-06-12' },
+            { symbol: 'NVDA', sentiment_score: 0.77, date: '2025-06-12' },
+            { symbol: 'NFLX', sentiment_score: 0.75, date: '2025-06-12' },
+            { symbol: 'PYPL', sentiment_score: 0.72, date: '2025-06-12' },
+            { symbol: 'INTC', sentiment_score: 0.70, date: '2025-06-12' }
+          ],
+          bottom_20: [
+            { symbol: 'XRX', sentiment_score: -0.68, date: '2025-06-12' },
+            { symbol: 'GME', sentiment_score: -0.72, date: '2025-06-12' },
+            { symbol: 'AMC', sentiment_score: -0.75, date: '2025-06-12' },
+            { symbol: 'BBBY', sentiment_score: -0.78, date: '2025-06-12' },
+            { symbol: 'NKLA', sentiment_score: -0.80, date: '2025-06-12' },
+            { symbol: 'RIDE', sentiment_score: -0.83, date: '2025-06-12' },
+            { symbol: 'WISH', sentiment_score: -0.85, date: '2025-06-12' },
+            { symbol: 'CLOV', sentiment_score: -0.87, date: '2025-06-12' },
+            { symbol: 'PLTR', sentiment_score: -0.90, date: '2025-06-12' },
+            { symbol: 'SPCE', sentiment_score: -0.92, date: '2025-06-12' }
+          ]
+        };
+        setData(mockData);
+        // Inform the user we're using mock data
+        setError('API is unavailable. Using demo data for display purposes.');
       } finally {
         setLoading(false);
       }
