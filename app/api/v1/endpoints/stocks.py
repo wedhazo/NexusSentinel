@@ -34,7 +34,8 @@ from app.models.macro_economic import MacroEconomicData, MacroIndicatorsLookup
 # Define __all__ to export models for OpenAPI schema generation
 __all__ = [
     "StockCoreCreate", "StockCoreResponse", "SentimentAnalysisCreate",
-    "SentimentAnalysisResponse", "AggregatedSentimentResponse", "StockFullDataResponse"
+    "SentimentAnalysisResponse", "AggregatedSentimentResponse", "StockFullDataResponse",
+    "StockSentimentItem", "TopBottomStocksResponse"
 ]
 
 # Create router
@@ -143,6 +144,23 @@ class AggregatedSentimentResponse(BaseModel):
     total_volume: int
     sentiment_distribution: Dict[str, int]
     
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StockSentimentItem(BaseModel):
+    """Schema for individual stock sentiment data."""
+    symbol: str
+    sentiment_score: float
+    date: date
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TopBottomStocksResponse(BaseModel):
+    """Schema for top/bottom stocks response."""
+    top_20: List[StockSentimentItem]
+    bottom_20: List[StockSentimentItem]
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -776,6 +794,83 @@ async def get_aggregated_sentiment(
             })
     
     return aggregated_data
+
+
+@router.get("/top-bottom-20", response_model=TopBottomStocksResponse)
+async def get_top_bottom_stocks(
+    query_date: date = Query(None, description="Date for which to retrieve data (defaults to today)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get the top 20 and bottom 20 stocks by sentiment score for a given date.
+
+    The sentiment score is derived from `stocks_sentiment_daily_summary.overall_sentiment_score`.
+    """
+    # Default to today if no date provided
+    if query_date is None:
+        query_date = date.today()
+
+    # Base selectable columns
+    base_cols = [
+        StocksCore.symbol,
+        StocksSentimentDailySummary.overall_sentiment_score.label("sentiment_score"),
+        StocksSentimentDailySummary.date,
+    ]
+
+    # --- Top 20 (descending) ---
+    top_q = (
+        select(*base_cols)
+        .join(
+            StocksSentimentDailySummary,
+            StocksCore.stock_id == StocksSentimentDailySummary.stock_id,
+        )
+        .where(
+            StocksSentimentDailySummary.date == query_date,
+            StocksSentimentDailySummary.overall_sentiment_score.is_not(None),
+        )
+        .order_by(desc(StocksSentimentDailySummary.overall_sentiment_score))
+        .limit(20)
+    )
+
+    # --- Bottom 20 (ascending) ---
+    bottom_q = (
+        select(*base_cols)
+        .join(
+            StocksSentimentDailySummary,
+            StocksCore.stock_id == StocksSentimentDailySummary.stock_id,
+        )
+        .where(
+            StocksSentimentDailySummary.date == query_date,
+            StocksSentimentDailySummary.overall_sentiment_score.is_not(None),
+        )
+        .order_by(StocksSentimentDailySummary.overall_sentiment_score)
+        .limit(20)
+    )
+
+    # Execute queries
+    top_res = await db.execute(top_q)
+    bottom_res = await db.execute(bottom_q)
+
+    # Transform results to list of StockSentimentItem
+    top_items = [
+        StockSentimentItem(
+            symbol=row.symbol,
+            sentiment_score=row.sentiment_score,
+            date=row.date,
+        )
+        for row in top_res.fetchall()
+    ]
+
+    bottom_items = [
+        StockSentimentItem(
+            symbol=row.symbol,
+            sentiment_score=row.sentiment_score,
+            date=row.date,
+        )
+        for row in bottom_res.fetchall()
+    ]
+
+    return TopBottomStocksResponse(top_20=top_items, bottom_20=bottom_items)
 
 
 @router.post("/", response_model=StockCoreResponse, status_code=status.HTTP_201_CREATED)
