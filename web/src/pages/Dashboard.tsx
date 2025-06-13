@@ -1,5 +1,8 @@
 import React from 'react';
 import TopBottomSentiment from '../components/TopBottomSentiment';
+import MarketOverview from '../components/MarketOverview';
+import NewsHeadlines from '../components/NewsHeadlines';
+import StockSearch from '../components/StockSearch';
 
 const Dashboard: React.FC = () => {
   return (
@@ -11,20 +14,29 @@ const Dashboard: React.FC = () => {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-8">
-        {/* Market Sentiment Analysis Section */}
-        <section>
-          <TopBottomSentiment />
+      {/* Welcome / Search section */}
+      <section className="mb-10">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">Find a stock</h2>
+        <StockSearch />
+      </section>
+
+      {/* Main dashboard grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Market Overview */}
+        <section className="order-2 md:order-1">
+          <MarketOverview />
         </section>
 
-        {/* Additional dashboard sections can be added here */}
-        <section className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6">Market Overview</h2>
-          <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-            <p className="text-gray-500">Market overview charts will be displayed here</p>
-          </div>
+        {/* Market Sentiment Analysis */}
+        <section className="order-1 md:order-2">
+          <TopBottomSentiment />
         </section>
       </div>
+
+      {/* News Headlines – full width */}
+      <section className="mt-8">
+        <NewsHeadlines />
+      </section>
     </div>
   );
 };
