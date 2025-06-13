@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import QueuePool
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text  # `text` used for raw SQL execution
 
 from app.config import settings
 
@@ -113,7 +113,8 @@ async def check_db_connection() -> Dict[str, Any]:
     """
     try:
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            # Use `text()` to wrap raw SQL strings so SQLAlchemy can compile them
+            await conn.execute(text("SELECT 1"))
             return {
                 "status": "connected",
                 "details": {
