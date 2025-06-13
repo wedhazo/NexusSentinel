@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles for shadcn/ui */
+@layer base {
+  :root {
+    --font-sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    
+    /* Ensure scrollbar is always visible to prevent layout shifts */
+    scrollbar-gutter: stable;
+  }
+
+  /* Improve default focus styles */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Better default scrollbars */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-secondary/50;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/50 rounded-full hover:bg-muted-foreground/70;
+  }
+}
+
+/* NexusSentinel specific styles */
+@layer components {
+  /* Card hover effects */
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-md hover:-translate-y-1;
+  }
+  
+  /* Stat value styles */
+  .stat-value {
+    @apply text-2xl font-bold;
+  }
+  
+  .stat-value.positive {
+    @apply text-green-600 dark:text-green-400;
+  }
+  
+  .stat-value.negative {
+    @apply text-red-600 dark:text-red-400;
+  }
+  
+  /* Animated loading placeholder */
+  .loading-pulse {
+    @apply animate-pulse bg-muted;
+  }
+}
+
+/* Animations */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Responsive typography */
+html {
+  font-size: 16px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 18px;
+  }
+}
