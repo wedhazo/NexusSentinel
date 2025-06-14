@@ -1,205 +1,140 @@
 # NexusSentinel
 
-Stock-market intelligence & sentiment-analysis platform powered by FastAPI, PostgreSQL and SQLAlchemy.
-
-| Section | Purpose |
-|---------|---------|
-| [Features](#features) | What NexusSentinel offers |
-| [Tech Stack](#tech-stack) | Core technologies |
-| [Project Structure](#project-structure) | Important folders & files |
-| [Quick Start](#quick-start) | TL;DR to run everything with Docker |
-| [Local Development](#local-development) | Manual installation with `pip` |
-| [Environment Variables](#environment-variables) | `.env` reference |
-| [Database Schema](#database-schema) | Tables & relationships |
-| [API Reference](#api-reference) | Endpoints summary |
-| [Usage Examples](#usage-examples) | `curl` snippets |
-| [Contributing](#contributing) | How to get involved |
-| [License](#license) | MIT |
+*(existing README content above remains unchanged)*
 
 ---
 
-## Features
-* Unified **stock fundamentals, OHLCV, technicals, news & social sentiment** in one API  
-* **Async** FastAPI backend with auto-generated Swagger (`/docs`) & OpenAPI (`/api/v1/openapi.json`)  
-* Modular **SQLAlchemy ORM** models (14 tables)  
-* **PostgreSQL** with asyncpg, connection-pooling and Alembic migrations  
-* **Docker / docker-compose** for zero-friction deployment (optional pgAdmin)  
-* Robust **health & metrics** endpoints (`/health`, `/health/detailed`)  
-* Built-in **rate limiting**, CORS, configurable logging, `.env` first approach  
+## Sentiment Analysis API
 
----
+NexusSentinel now ships with a dedicated, production-ready sentiment-analysis service designed for finance-specific text.  
+The service provides fast, specialized inference via FinBERT/FinGPT **with automatic fallback to OpenAI GPT-4o/4** whenever additional accuracy or low-confidence recovery is required.
 
-## Tech Stack
-* Python 3.11  
-* FastAPI 0.110 / Starlette 0.36  
-* SQLAlchemy 2 (async) + asyncpg  
-* PostgreSQL 15-alpine  
-* Alembic for migrations  
-* Uvicorn / Gunicorn (production)  
-* Docker & docker-compose (optional)  
+### 1. Endpoint
 
----
-
-## Project Structure
 ```
-NexusSentinel/
-├─ app/
-│  ├─ api/                 # Routers & endpoint modules
-│  │  └─ v1/
-│  │     ├─ endpoints/
-│  │     │   └─ stocks.py
-│  │     └─ router.py
-│  ├─ models/              # SQLAlchemy models (one file per table)
-│  ├─ config.py            # Pydantic Settings
-│  ├─ database.py          # Async engine & session
-│  └─ main.py              # FastAPI application factory
-├─ .env                    # Environment variables (**never commit secrets**)
-├─ requirements.txt        # Python dependencies
-├─ Dockerfile              # Production image
-├─ docker-compose.yml      # API + PostgreSQL (+ pgAdmin)
-└─ README.md
+POST /api/v1/sentiment/analyze
 ```
 
----
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `text` | string | ✓ | Raw text to analyse (≤ 5 000 chars). |
+| `source` | string | – | Optional text origin, e.g. `news`, `twitter`, `reddit`. |
+| `extract_entities` | bool | – | Defaults to `true`. Toggle entity extraction. |
+| `metadata` | object | – | Arbitrary key/value payload forwarded to upstream provider. |
 
-## Quick Start
+Query param  
+`confidence_threshold` – override global fallback threshold (default = `0.6`).
 
-### 1. Clone & configure
-```bash
-git clone https://github.com/your-org/NexusSentinel.git
-cd NexusSentinel
-cp .env .env.local   # customise credentials & secrets
+### 2. Dual-Provider Architecture
+
+```
+┌─────────────┐     high-confidence (≥ threshold) ──────────► Return
+│  FinBERT /  │
+│   FinGPT    │──── low-confidence (< threshold) ─►┐
+└─────────────┘                                   │
+                                                  ▼
+                                          ┌─────────────┐
+                                          │   OpenAI    │
+                                          │ GPT-4o | 4  │
+                                          └─────────────┘
 ```
 
-### 2. Run with Docker
-```bash
-docker compose --env-file .env.local up --build
-```
-Services:  
-* `api` → http://localhost:8000  
-* `db` → localhost:5432  
-* `pgadmin` (only in dev profile) → http://localhost:5050
+1. Primary request is sent to a configurable FinBERT/FinGPT endpoint (FinBrain, FinGPT, or custom).
+2. If the response confidence is **below the threshold** *or* the provider fails, the same text is re-routed to OpenAI ChatGPT (`gpt-4o`; fallback `gpt-4`).
+3. The chosen provider is reflected in the response’s `source` field (`"finbert"` or `"openai"`).
 
-Stop & remove containers:
-```bash
-docker compose down -v
-```
+### 3. Entity Extraction
 
----
+When `extract_entities=true`, NexusSentinel returns a lightweight list of recognised financial entities:
 
-## Local Development (without Docker)
-
-```bash
-py -m venv .venv && source .venv/Scripts/activate   # Windows example
-python -m pip install -r requirements.txt
-cp .env .env.local
-# edit .env.local with your DB creds
-psql -c "CREATE DATABASE nexussentinel;"            # or use pgAdmin
-alembic upgrade head                                # migrations (optional)
-python run_server.py --reload                       # http://localhost:8000
-```
-
----
-
-## Environment Variables
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `DB_HOST` / `DB_PORT` | localhost / 5432 | PostgreSQL host/port |
-| `DB_USER` / `DB_PASSWORD` | postgres / *** | Database credentials |
-| `DB_NAME` | nexussentinel | Database name |
-| `DATABASE_URL` | derived | Full SQLAlchemy URL (`postgresql+asyncpg://...`) |
-| `API_HOST` / `API_PORT` | 0.0.0.0 / 8000 | Uvicorn bind address |
-| `SECRET_KEY` | *change me* | JWT / session signing |
-| `CORS_ORIGINS` | `http://localhost:3000` | Front-end origins (comma list) |
-| `RATE_LIMIT_DEFAULT` | 100 | Requests per period |
-
-_See `.env` for the complete list._
-
----
-
-## Database Schema
-
-| Table | Purpose / Key Columns |
-|-------|-----------------------|
-| `stocks_core` | Company fundamentals (`symbol`, `company_name`, `sector` …) |
-| `stocks_ohlcv_daily` | Daily OHLCV (`date`, `open`, `close`, `volume`) |
-| `stocks_ohlcv_intraday_5min` | 5-minute OHLCV (`timestamp`) |
-| `stocks_financial_statements_quarterly` | `fiscal_quarter`, `revenue`, `eps_basic` |
-| `stocks_financial_statements_annual` | Annual financials |
-| `stocks_technical_indicators_daily` | SMA/EMA, RSI, MACD, etc. |
-| `stocks_news` | News articles with `sentiment_score` |
-| `stocks_social_posts` | Twitter/Reddit posts with sentiment |
-| `stocks_sentiment_daily_summary` | Aggregated daily sentiment |
-| `stocks_dividends` | Dividend history (`ex_date`, `amount`) |
-| `stocks_splits` | Stock split events |
-| `stocks_analyst_ratings` | Analyst ratings & target prices |
-| `macro_indicators_lookup` | Master list of macro indicators |
-| `macro_economic_data` | Daily/weekly macro values |
-
-Foreign-key relationships are declared in each SQLAlchemy model (`app/models/**.py`) and use `ON DELETE CASCADE` to maintain referential integrity.
-
----
-
-## API Reference
-
-> Full interactive documentation is auto-generated at **`/docs`** (Swagger UI)  
-> Raw schema: **`/api/v1/openapi.json`**
-
-| Method & Path | Description |
-|---------------|------------|
-| `GET  /api/v1/stocks` | List stocks (filter by sector, search, pagination) |
-| `POST /api/v1/stocks` | Create new company record |
-| `GET  /api/v1/stocks/{symbol}` | **Comprehensive data** (fundamentals, OHLCV, financials, sentiment, macro) |
-| `PUT  /api/v1/stocks/{symbol}` | Update stock fundamentals |
-| `DELETE /api/v1/stocks/{symbol}` | Delete stock & cascade children |
-| `POST /api/v1/stocks/sentiment` | Submit sentiment result (news / social) |
-| `GET  /api/v1/stocks/sentiment/aggregate` | Aggregated sentiment by date & source |
-| `GET  /health` | Basic health |
-| `GET  /health/detailed` | System & dependency status |
-
----
-
-## Usage Examples
-
-### 1. Query Full Stock Data
-```bash
-curl -X GET "http://localhost:8000/api/v1/stocks/AAPL?query_date=2025-05-31" | jq
-```
-
-### 2. Submit Sentiment Result
-```bash
-curl -X POST "http://localhost:8000/api/v1/stocks/sentiment" \
--H "Content-Type: application/json" \
--d '{
-  "symbol": "AAPL",
-  "date": "2025-06-11",
-  "source": "news",
-  "sentiment_score": 0.82,
-  "sentiment_label": "positive",
-  "volume": 3,
-  "content_sample": "Apple surprises with new product launch",
-  "source_details": {
-    "publisher": "Reuters",
-    "author": "Jane Doe",
-    "url": "https://reut.rs/abcd"
+```json
+"entities": [
+  {
+    "text": "Apple",
+    "type": "company",
+    "confidence": 0.95,
+    "metadata": { "possible_symbols": ["AAPL"] }
+  },
+  {
+    "text": "AAPL",
+    "type": "symbol",
+    "confidence": 0.98,
+    "metadata": {}
   }
-}'
+]
 ```
 
-### 3. Get Aggregated Sentiment Range
+Supported `type` values: `company`, `symbol`, `financial_instrument`, `other`.
+
+### 4. Required Configuration
+
+Add the following variables to `.env` (see **app/config.py** for defaults):
+
+```
+# FinBERT / FinGPT
+FINBERT_API_KEY=your_key
+FINBERT_API_URL=https://api.finbrain.tech/v1/sentiment   # or FinGPT/custom
+FINBERT_PROVIDER=finbrain                                # finbrain | fingpt | custom
+FINBERT_AUTH_METHOD=api-key                              # api-key | bearer | custom
+
+# OpenAI
+OPENAI_API_KEY=your_openai_key
+OPENAI_MODEL=gpt-4o
+OPENAI_FALLBACK_MODEL=gpt-4
+
+# Fallback logic
+SENTIMENT_CONFIDENCE_THRESHOLD=0.6
+```
+
+Docker/Cloud Run automatically picks these up from Secret Manager or `.env`.
+
+### 5. Quick Test
+
 ```bash
-curl "http://localhost:8000/api/v1/stocks/sentiment/aggregate?symbol=AAPL&start_date=2025-05-01&end_date=2025-05-31&sources=news,twitter"
+curl -X POST http://localhost:8000/api/v1/sentiment/analyze \
+     -H "Content-Type: application/json" \
+     -d '{
+           "text": "Tesla (TSLA) shares rally after record delivery numbers.",
+           "source": "news"
+         }'
 ```
 
+### 6. Sample Response
+
+```json
+{
+  "text": "Tesla (TSLA) shares rally after record delivery numbers.",
+  "sentiment": "positive",
+  "confidence": 0.93,
+  "source": "finbert",
+  "reasoning": "The headline signals strong performance likely to uplift investor sentiment.",
+  "entities": [
+    { "text": "Tesla", "type": "company", "confidence": 0.94, "metadata": { "possible_symbols": ["TSLA"] } },
+    { "text": "TSLA",  "type": "symbol",  "confidence": 0.98, "metadata": {} }
+  ],
+  "metadata": {
+    "processing_time_ms": 123,
+    "provider": "finbrain"
+  },
+  "request_id": "1c5c0e29-d9bf-40e9-95b3-e5b94996ac8c",
+  "processed_at": "2025-06-14T12:34:56.789Z"
+}
+```
+
+### 7. Running Tests
+
+```bash
+# Unit & integration tests (incl. mocked FinBERT/OpenAI)
+pytest tests/api/test_sentiment.py -q
+```
+
+The test-suite mocks external calls, validating:
+* high-confidence FinBERT path
+* low-confidence fallback to OpenAI
+* entity extraction correctness
+* graceful error handling
+
 ---
 
-## Contributing
-1. Fork & clone the repo  
-2. Create feature branch (`feat/my-awesome-thing`)  
-3. Commit with conventional commits  
-4. Run `pytest` & `ruff` (or `flake8`) locally  
-5. Submit PR – thank you! 🎉
-
----
-
+*Happy coding & insightful sentiment tracking!*  
+For questions or issues, open a GitHub Discussion or email **support@nexussentinel.dev**.

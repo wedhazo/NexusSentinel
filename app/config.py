@@ -8,6 +8,7 @@ Environment variables are loaded from .env file if present.
 from typing import List, Optional, Union, Any
 from pydantic import (
     AnyHttpUrl,
+    HttpUrl,
     PostgresDsn,
     field_validator,
     model_validator,
@@ -122,6 +123,32 @@ class Settings(BaseSettings):
     SENTIMENT_API_KEY: Optional[str] = None
     MARKET_DATA_API_URL: Optional[AnyHttpUrl] = None
     MARKET_DATA_API_KEY: Optional[str] = None
+
+    # --- Sentiment analysis / AI provider settings ---
+    # FinBERT / FinGPT
+    FINBERT_API_KEY: Optional[str] = None
+    FINBERT_API_URL: Optional[HttpUrl] = None
+    FINBERT_PROVIDER: str = "finbrain"  # finbrain | fingpt | custom
+    FINBERT_TIMEOUT_SECONDS: int = 10
+    FINBERT_AUTH_METHOD: str = "api-key"  # api-key | bearer | custom
+    FINBERT_AUTH_HEADER: str = "X-API-KEY"
+    FINBERT_LABEL_FIELD: str = "sentiment"
+    FINBERT_CONFIDENCE_FIELD: str = "confidence"
+    FINBERT_POSITIVE_LABEL: str = "positive"
+    FINBERT_NEUTRAL_LABEL: str = "neutral"
+    FINBERT_NEGATIVE_LABEL: str = "negative"
+
+    # OpenAI
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_FALLBACK_MODEL: str = "gpt-4"
+    OPENAI_MAX_TOKENS: int = 500
+    OPENAI_TEMPERATURE: float = 0.1
+
+    # Sentiment service behaviour
+    SENTIMENT_ANALYZER_PROVIDER: str = "finbert"  # finbert | openai
+    SENTIMENT_CONFIDENCE_THRESHOLD: float = 0.6
+    ENABLE_SENTIMENT_HISTORY: bool = True
     
     # Feature flags
     ENABLE_SENTIMENT_ANALYSIS: bool = True
