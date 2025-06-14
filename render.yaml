@@ -1,0 +1,102 @@
+# Render configuration for NexusSentinel
+services:
+  # Backend API Service
+  - type: web
+    name: nexussentinel-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: 8000
+      - key: API_WORKERS
+        value: 4
+      - key: API_RELOAD
+        value: false
+      - key: API_DEBUG
+        value: false
+      - key: DB_HOST
+        fromDatabase:
+          name: nexussentinel-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: nexussentinel-db
+          property: port
+      - key: DB_USER
+        fromDatabase:
+          name: nexussentinel-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: nexussentinel-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: nexussentinel-db
+          property: database
+      - key: DB_SCHEMA
+        value: public
+      - key: DB_POOL_SIZE
+        value: 20
+      - key: DB_MAX_OVERFLOW
+        value: 10
+      - key: DB_ECHO
+        value: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexussentinel-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 30
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: 7
+      - key: CORS_ORIGINS
+        value: ${RENDER_EXTERNAL_URL},https://nexussentinel-web.onrender.com
+      - key: RATE_LIMIT_ENABLED
+        value: true
+      - key: RATE_LIMIT_DEFAULT
+        value: 100
+      - key: RATE_LIMIT_PERIOD_SECONDS
+        value: 60
+      - key: LOG_LEVEL
+        value: INFO
+      - key: LOG_FORMAT
+        value: json
+      - key: APPLY_MIGRATIONS
+        value: true
+
+  # Frontend React Service
+  - type: web
+    name: nexussentinel-web
+    env: docker
+    dockerfilePath: ./web/Dockerfile
+    dockerContext: ./web
+    plan: starter
+    healthCheckPath: /
+    buildCommand: npm ci && npm run build
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VITE_API_BASE_URL
+        value: https://nexussentinel-api.onrender.com/api/v1
+      - key: VITE_API_TIMEOUT
+        value: 30000
+
+# Database Service
+databases:
+  - name: nexussentinel-db
+    plan: starter
+    databaseName: nexussentinel
+    user: nexussentinel_user
+    ipAllowList: []  # Only allow internal connections

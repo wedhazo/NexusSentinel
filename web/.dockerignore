@@ -1,0 +1,56 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Build outputs
+dist
+build
+coverage
+
+# Environment and local files
+.env
+.env.*
+*.local
+
+# Version control
+.git
+.gitignore
+.github
+
+# Editor directories and files
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage
+__tests__
+*.test.js
+*.test.ts
+*.test.tsx
+*.spec.js
+*.spec.ts
+*.spec.tsx
+
+# Logs
+logs
+*.log
+
+# Misc
+README.md
+LICENSE
+.editorconfig
+.eslintrc*
+.prettierrc*
+.stylelintrc*
+jest.config.*
