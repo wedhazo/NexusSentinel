@@ -1,227 +1,185 @@
 """
-API endpoints for watchlists management.
+Watchlist endpoints for NexusSentinel API.
 
-This module provides CRUD operations for watchlists, allowing users to
-create, read, update, and delete watchlists of stocks they want to monitor.
+This module provides endpoints for managing the watchlist feature, including:
+- Getting all watchlist items
+- Adding a stock to the watchlist
+- Removing a stock from the watchlist
+
+Since authentication is not yet implemented, this is a global watchlist.
 """
 
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, func
-from sqlalchemy.orm import selectinload
-from sqlalchemy.exc import IntegrityError
-
-from app.database import get_db
-from app.models.watchlists import Watchlist
-from app.models.stocks_core import StocksCore
-from pydantic import BaseModel, Field, validator
 from datetime import datetime
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Path, status
+from sqlalchemy import select, delete, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+from pydantic import BaseModel, Field, ConfigDict
 
-# Define Pydantic models for request/response schemas
-class StockItem(BaseModel):
-    symbol: str
-    company_name: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
+# Import database and models
+from app.database import get_db
+from app.models.stocks_core import StocksCore
+from app.models.watchlist import Watchlist
 
-class WatchlistBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100, description="Name of the watchlist")
-    description: Optional[str] = Field(None, max_length=500, description="Optional description of the watchlist")
-
-class WatchlistCreate(WatchlistBase):
-    stock_symbols: List[str] = Field(default_factory=list, description="List of stock symbols to add to the watchlist")
-
-class WatchlistUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100, description="Name of the watchlist")
-    description: Optional[str] = Field(None, max_length=500, description="Description of the watchlist")
-    stock_symbols: Optional[List[str]] = Field(None, description="List of stock symbols to update in the watchlist")
-
-class WatchlistResponse(WatchlistBase):
-    watchlist_id: int
-    created_at: datetime
-    last_updated: datetime
-    stocks: List[StockItem] = []
-    
-    class Config:
-        from_attributes = True
+# Define __all__ to export models for OpenAPI schema generation
+__all__ = ["WatchlistItemCreate", "WatchlistItemResponse"]
 
 # Create router
 router = APIRouter()
 
-@router.get("/", response_model=List[WatchlistResponse])
-async def get_watchlists(
-    skip: int = Query(0, ge=0, description="Number of watchlists to skip"),
-    limit: int = Query(100, ge=1, le=100, description="Maximum number of watchlists to return"),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Retrieve all watchlists with their stocks.
-    
-    Returns a list of watchlists, each containing its metadata and associated stocks.
-    """
-    query = select(Watchlist).options(selectinload(Watchlist.stocks)).offset(skip).limit(limit)
-    result = await db.execute(query)
-    watchlists = result.scalars().all()
-    
-    return watchlists
+# --- Pydantic Models for Request/Response ---
 
-@router.get("/{watchlist_id}", response_model=WatchlistResponse)
-async def get_watchlist(
-    watchlist_id: int = Path(..., ge=1, description="The ID of the watchlist to retrieve"),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Retrieve a specific watchlist by ID.
-    
-    Returns detailed information about a watchlist, including its stocks.
-    """
-    query = select(Watchlist).options(selectinload(Watchlist.stocks)).where(Watchlist.watchlist_id == watchlist_id)
-    result = await db.execute(query)
-    watchlist = result.scalar_one_or_none()
-    
-    if not watchlist:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Watchlist with ID {watchlist_id} not found"
-        )
-    
-    return watchlist
+class WatchlistItemCreate(BaseModel):
+    """Schema for creating a new watchlist item."""
+    symbol: str = Field(..., description="Stock ticker symbol", example="AAPL")
 
-@router.post("/", response_model=WatchlistResponse, status_code=status.HTTP_201_CREATED)
-async def create_watchlist(
-    watchlist: WatchlistCreate,
-    db: AsyncSession = Depends(get_db)
-):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "symbol": "AAPL"
+            }
+        }
+    )
+
+
+class WatchlistItemResponse(BaseModel):
+    """Schema for watchlist item response."""
+    id: int
+    symbol: str
+    company_name: str
+    date_added: datetime
+    sentiment_score: Optional[float] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Endpoints ---
+
+@router.get("/", response_model=List[WatchlistItemResponse])
+async def get_watchlist_items(db: AsyncSession = Depends(get_db)):
     """
-    Create a new watchlist.
+    Get all watchlist items.
     
-    Accepts watchlist metadata and an optional list of stock symbols to add to the watchlist.
+    Returns a list of all stocks in the watchlist with their details.
     """
-    # Create new watchlist instance
-    db_watchlist = Watchlist(
-        name=watchlist.name,
-        description=watchlist.description
+    # Query watchlist items with joined stock information
+    query = (
+        select(Watchlist, StocksCore.company_name)
+        .join(StocksCore, Watchlist.stock_id == StocksCore.stock_id)
+        .order_by(Watchlist.date_added.desc())
     )
     
-    # Add stocks to watchlist if symbols are provided
-    if watchlist.stock_symbols:
-        # Find stocks by symbols
-        query = select(StocksCore).where(StocksCore.symbol.in_(watchlist.stock_symbols))
-        result = await db.execute(query)
-        stocks = result.scalars().all()
-        
-        # Check if all symbols were found
-        found_symbols = {stock.symbol for stock in stocks}
-        missing_symbols = set(watchlist.stock_symbols) - found_symbols
-        
-        if missing_symbols:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Stock symbols not found: {', '.join(missing_symbols)}"
-            )
-        
-        # Add stocks to watchlist
-        db_watchlist.stocks = stocks
+    result = await db.execute(query)
+    items = result.all()
     
-    try:
-        # Add and commit to database
-        db.add(db_watchlist)
-        await db.commit()
-        await db.refresh(db_watchlist)
-        return db_watchlist
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Watchlist with this name already exists"
+    # Process results to include company name
+    watchlist_items = []
+    for item, company_name in items:
+        # Get latest sentiment score if available
+        sentiment_query = (
+            select(StocksCore)
+            .where(StocksCore.stock_id == item.stock_id)
+            .options(joinedload(StocksCore.sentiment_summaries))
         )
+        stock_result = await db.execute(sentiment_query)
+        stock = stock_result.scalar_one_or_none()
+        
+        sentiment_score = None
+        if stock and stock.sentiment_summaries:
+            # Get the most recent sentiment summary
+            latest_sentiment = max(stock.sentiment_summaries, key=lambda x: x.date, default=None)
+            if latest_sentiment:
+                sentiment_score = latest_sentiment.overall_sentiment_score
+        
+        watchlist_items.append({
+            "id": item.id,
+            "symbol": item.symbol,
+            "company_name": company_name,
+            "date_added": item.date_added,
+            "sentiment_score": sentiment_score
+        })
+    
+    return watchlist_items
 
-@router.put("/{watchlist_id}", response_model=WatchlistResponse)
-async def update_watchlist(
-    watchlist_update: WatchlistUpdate,
-    watchlist_id: int = Path(..., ge=1, description="The ID of the watchlist to update"),
+
+@router.post("/", response_model=WatchlistItemResponse, status_code=status.HTTP_201_CREATED)
+async def add_to_watchlist(item: WatchlistItemCreate, db: AsyncSession = Depends(get_db)):
+    """
+    Add a stock to the watchlist.
+    
+    Requires a valid stock symbol that exists in the database.
+    """
+    # Check if the stock exists
+    query = select(StocksCore).where(StocksCore.symbol == item.symbol.upper())
+    result = await db.execute(query)
+    stock = result.scalar_one_or_none()
+    
+    if not stock:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stock with symbol '{item.symbol}' not found"
+        )
+    
+    # Check if the stock is already in the watchlist
+    watchlist_query = select(Watchlist).where(Watchlist.symbol == item.symbol.upper())
+    watchlist_result = await db.execute(watchlist_query)
+    existing_item = watchlist_result.scalar_one_or_none()
+    
+    if existing_item:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Stock with symbol '{item.symbol}' is already in the watchlist"
+        )
+    
+    # Create new watchlist item
+    new_item = Watchlist(
+        symbol=item.symbol.upper(),
+        stock_id=stock.stock_id
+    )
+    
+    db.add(new_item)
+    await db.commit()
+    await db.refresh(new_item)
+    
+    # Get sentiment score if available
+    sentiment_score = None
+    if stock.sentiment_summaries:
+        # Get the most recent sentiment summary
+        latest_sentiment = max(stock.sentiment_summaries, key=lambda x: x.date, default=None)
+        if latest_sentiment:
+            sentiment_score = latest_sentiment.overall_sentiment_score
+    
+    # Return response
+    return {
+        "id": new_item.id,
+        "symbol": new_item.symbol,
+        "company_name": stock.company_name,
+        "date_added": new_item.date_added,
+        "sentiment_score": sentiment_score
+    }
+
+
+@router.delete("/{symbol}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_from_watchlist(
+    symbol: str = Path(..., description="Stock ticker symbol to remove from watchlist"),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Update an existing watchlist.
+    Remove a stock from the watchlist.
     
-    Updates watchlist metadata and/or its associated stocks.
+    Deletes the watchlist item with the specified symbol.
     """
-    # Check if watchlist exists
-    query = select(Watchlist).options(selectinload(Watchlist.stocks)).where(Watchlist.watchlist_id == watchlist_id)
-    result = await db.execute(query)
-    db_watchlist = result.scalar_one_or_none()
+    # Find and delete the watchlist item
+    delete_query = delete(Watchlist).where(Watchlist.symbol == symbol.upper())
+    result = await db.execute(delete_query)
     
-    if not db_watchlist:
+    if result.rowcount == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Watchlist with ID {watchlist_id} not found"
+            detail=f"Stock with symbol '{symbol}' not found in watchlist"
         )
     
-    # Update fields if provided
-    if watchlist_update.name is not None:
-        db_watchlist.name = watchlist_update.name
-    
-    if watchlist_update.description is not None:
-        db_watchlist.description = watchlist_update.description
-    
-    # Update stocks if provided
-    if watchlist_update.stock_symbols is not None:
-        # Find stocks by symbols
-        query = select(StocksCore).where(StocksCore.symbol.in_(watchlist_update.stock_symbols))
-        result = await db.execute(query)
-        stocks = result.scalars().all()
-        
-        # Check if all symbols were found
-        found_symbols = {stock.symbol for stock in stocks}
-        missing_symbols = set(watchlist_update.stock_symbols) - found_symbols
-        
-        if missing_symbols:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Stock symbols not found: {', '.join(missing_symbols)}"
-            )
-        
-        # Replace stocks in watchlist
-        db_watchlist.stocks = stocks
-    
-    try:
-        # Commit changes
-        await db.commit()
-        await db.refresh(db_watchlist)
-        return db_watchlist
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Watchlist with this name already exists"
-        )
-
-@router.delete("/{watchlist_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_watchlist(
-    watchlist_id: int = Path(..., ge=1, description="The ID of the watchlist to delete"),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Delete a watchlist.
-    
-    Removes a watchlist and its associations with stocks.
-    """
-    # Check if watchlist exists
-    query = select(Watchlist).where(Watchlist.watchlist_id == watchlist_id)
-    result = await db.execute(query)
-    db_watchlist = result.scalar_one_or_none()
-    
-    if not db_watchlist:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Watchlist with ID {watchlist_id} not found"
-        )
-    
-    # Delete watchlist
-    await db.delete(db_watchlist)
     await db.commit()
     
-    return None
+    return None  # 204 No Content response

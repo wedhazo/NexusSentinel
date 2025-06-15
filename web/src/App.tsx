@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
+import Watchlists from './pages/Watchlists';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 
@@ -15,6 +16,7 @@ const App: React.FC = () => {
       <main className="flex-grow container mx-auto px-4 py-8">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/watchlist" element={<Watchlists />} />
           {/* Future routes can be added here */}
         </Routes>
       </main>
