@@ -9,6 +9,9 @@ from fastapi import APIRouter
 
 # Import endpoint routers
 from app.api.v1.endpoints.stocks import router as stocks_router
+# Newly added endpoint routers
+from app.api.v1.endpoints.market import router as market_router
+from app.api.v1.endpoints.news import router as news_router
 # Import additional endpoint routers as they are created
 # from app.api.v1.endpoints.users import router as users_router
 # from app.api.v1.endpoints.auth import router as auth_router
@@ -20,6 +23,9 @@ api_router = APIRouter()
 
 # Include all endpoint routers
 api_router.include_router(stocks_router, prefix="/stocks", tags=["Stocks"])
+# New routers
+api_router.include_router(market_router, prefix="/market", tags=["Market"])
+api_router.include_router(news_router, prefix="/news", tags=["News"])
 # Include additional routers as they are created
 # api_router.include_router(users_router, prefix="/users", tags=["Users"])
 # api_router.include_router(auth_router, prefix="/auth", tags=["Authentication"])
