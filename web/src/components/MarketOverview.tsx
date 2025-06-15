@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { api } from '../api/apiClient';
 import { 
   LineChart, 
   Line, 
@@ -41,80 +41,15 @@ const MarketOverview: React.FC = () => {
     const fetchMarketData = async () => {
       try {
         setLoading(true);
-        
-        // In a real implementation, you would fetch from your API:
-        // const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/market/indices`);
-        // setIndices(response.data.indices);
-        // setHistoricalData(response.data.historical);
-        
-        // Mock data for development
-        const mockIndices: MarketIndex[] = [
-          {
-            name: 'S&P 500',
-            symbol: 'SPX',
-            currentValue: 5280.42,
-            change: 28.65,
-            changePercent: 0.54,
-            color: '#4ade80' // green-400
-          },
-          {
-            name: 'NASDAQ',
-            symbol: 'COMP',
-            currentValue: 18432.15,
-            change: 145.78,
-            changePercent: 0.79,
-            color: '#4ade80' // green-400
-          },
-          {
-            name: 'Dow Jones',
-            symbol: 'DJI',
-            currentValue: 41876.22,
-            change: -52.43,
-            changePercent: -0.12,
-            color: '#f87171' // red-400
-          },
-          {
-            name: 'Russell 2000',
-            symbol: 'RUT',
-            currentValue: 2245.36,
-            change: 12.68,
-            changePercent: 0.57,
-            color: '#4ade80' // green-400
-          }
-        ];
 
-        // Generate mock historical data
-        const mockHistorical: HistoricalDataPoint[] = [];
-        const today = new Date();
-        
-        // Generate data for the past 30 days
-        for (let i = 30; i >= 0; i--) {
-          const date = new Date(today);
-          date.setDate(date.getDate() - i);
-          
-          // Base values
-          const baseSpx = 5200;
-          const baseNasdaq = 18000;
-          const baseDowJones = 41800;
-          
-          // Add some randomness for realistic data
-          const volatility = 0.02; // 2% volatility
-          const trend = 0.001; // slight upward trend
-          
-          const randomFactor = (i: number) => {
-            return (Math.random() - 0.5) * volatility + (trend * i);
-          };
-          
-          mockHistorical.push({
-            date: date.toISOString().split('T')[0],
-            sp500: Math.round((baseSpx * (1 + randomFactor(i))) * 100) / 100,
-            nasdaq: Math.round((baseNasdaq * (1 + randomFactor(i))) * 100) / 100,
-            dowJones: Math.round((baseDowJones * (1 + randomFactor(i))) * 100) / 100
-          });
-        }
-        
-        setIndices(mockIndices);
-        setHistoricalData(mockHistorical);
+        // Fetch data from backend API
+        const response = await api.get<{
+          indices: MarketIndex[];
+          historical: HistoricalDataPoint[];
+        }>('/market/overview');
+
+        setIndices(response.indices);
+        setHistoricalData(response.historical);
         setError(null);
       } catch (err) {
         console.error('Error fetching market data:', err);

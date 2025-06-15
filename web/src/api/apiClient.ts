@@ -1,88 +1,148 @@
-import axios from "axios";
+import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const API_PREFIX = "/api/v1";
+// Types for API responses
+export interface ApiResponse<T> {
+  data: T;
+  status: number;
+  statusText: string;
+  headers: any;
+}
 
-const apiClient = axios.create({
-  baseURL: `${API_URL}${API_PREFIX}`,
-  headers: {
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-  },
-  timeout: 30000,
-});
+export interface ApiError {
+  message: string;
+  status?: number;
+  errors?: any;
+}
 
-// Request interceptor
-apiClient.interceptors.request.use(
-  (config) => {
-    // Add auth token if available
-    const token = localStorage.getItem("auth_token");
-    if (token) {
-      config.headers["Authorization"] = `Bearer ${token}`;
+// Environment-based API URL
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_PREFIX = '/api/v1';
+
+/**
+ * Creates and configures an Axios instance for API calls
+ */
+const createApiClient = (): AxiosInstance => {
+  const client = axios.create({
+    baseURL: `${API_URL}${API_PREFIX}`,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    timeout: 30000, // 30 seconds
+  });
+
+  // Request interceptor
+  client.interceptors.request.use(
+    (config) => {
+      // Add auth token if available
+      const token = localStorage.getItem('auth_token');
+      if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error) => {
+      return Promise.reject(error);
     }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
+  );
 
-// Response interceptor
-apiClient.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  (error) => {
-    const errorResponse = {
-      message: "An unexpected error occurred",
-    };
+  // Response interceptor
+  client.interceptors.response.use(
+    (response) => {
+      return response;
+    },
+    (error: AxiosError) => {
+      // Handle specific error cases
+      const errorResponse: ApiError = {
+        message: 'An unexpected error occurred',
+      };
 
-    if (error.response) {
-      // Server responded with error
-      errorResponse.status = error.response.status;
-      errorResponse.message = error.response.data?.message || `Error: ${error.response.status}`;
-    } else if (error.request) {
-      // No response received
-      errorResponse.message = "No response received from server. Please check your connection.";
+      if (error.response) {
+        // Server responded with an error status
+        errorResponse.status = error.response.status;
+        errorResponse.message = error.response.data?.message || `Error: ${error.response.status}`;
+        errorResponse.errors = error.response.data?.errors;
+
+        // Handle specific status codes
+        switch (error.response.status) {
+          case 401:
+            // Unauthorized - clear auth and redirect to login
+            localStorage.removeItem('auth_token');
+            // Could dispatch an auth logout action here if using Redux
+            break;
+          case 403:
+            // Forbidden
+            errorResponse.message = 'You do not have permission to access this resource';
+            break;
+          case 404:
+            // Not found
+            errorResponse.message = 'The requested resource was not found';
+            break;
+          case 500:
+            // Server error
+            errorResponse.message = 'An internal server error occurred';
+            break;
+        }
+      } else if (error.request) {
+        // Request was made but no response received
+        errorResponse.message = 'No response received from server. Please check your connection.';
+      }
+
+      console.error('API Error:', errorResponse);
+      return Promise.reject(errorResponse);
     }
+  );
 
-    console.error("API Error:", errorResponse);
-    return Promise.reject(errorResponse);
-  }
-);
+  return client;
+};
+
+// Create the API client instance
+const apiClient = createApiClient();
 
 // Helper methods
 export const api = {
-  get: async (url, config) => {
+  /**
+   * Make a GET request
+   */
+  get: async <T>(url: string, config?: AxiosRequestConfig): Promise<T> => {
     try {
-      const response = await apiClient.get(url, config);
+      const response: AxiosResponse<T> = await apiClient.get(url, config);
       return response.data;
     } catch (error) {
       throw error;
     }
   },
 
-  post: async (url, data, config) => {
+  /**
+   * Make a POST request
+   */
+  post: async <T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => {
     try {
-      const response = await apiClient.post(url, data, config);
+      const response: AxiosResponse<T> = await apiClient.post(url, data, config);
       return response.data;
     } catch (error) {
       throw error;
     }
   },
 
-  put: async (url, data, config) => {
+  /**
+   * Make a PUT request
+   */
+  put: async <T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => {
     try {
-      const response = await apiClient.put(url, data, config);
+      const response: AxiosResponse<T> = await apiClient.put(url, data, config);
       return response.data;
     } catch (error) {
       throw error;
     }
   },
 
-  delete: async (url, config) => {
+  /**
+   * Make a DELETE request
+   */
+  delete: async <T>(url: string, config?: AxiosRequestConfig): Promise<T> => {
     try {
-      const response = await apiClient.delete(url, config);
+      const response: AxiosResponse<T> = await apiClient.delete(url, config);
       return response.data;
     } catch (error) {
       throw error;
@@ -90,4 +150,5 @@ export const api = {
   }
 };
 
+// Export the raw client for advanced use cases
 export default apiClient;
