@@ -81,6 +81,9 @@ class StocksCore(Base):
     
     # Analyst ratings
     analyst_ratings = relationship("StocksAnalystRatings", back_populates="stock", cascade="all, delete-orphan")
+
+    # Watchlist items (global watchlist ‑ no user association yet)
+    watchlist_items = relationship("Watchlist", back_populates="stock", cascade="all, delete-orphan")
     
     # Indexes for performance
     __table_args__ = (

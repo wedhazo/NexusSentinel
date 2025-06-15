@@ -153,6 +153,27 @@ export interface StockSearchResponse {
   total: number;
 }
 
+// --------------------------------------------------
+// Watchlist Types
+// --------------------------------------------------
+
+// Payload for adding a symbol to the watchlist
+export interface WatchlistCreate {
+  symbol: string;
+}
+
+// Item returned from the watchlist endpoints
+export interface WatchlistItem {
+  id: number;
+  symbol: string;
+  company_name: string;
+  date_added: string;
+  sentiment_score?: number;
+}
+
+// Response from `GET /watchlist`
+export type WatchlistResponse = WatchlistItem[];
+
 // Full Stock Data Response
 export interface StockFullDataResponse {
   // Core stock data
