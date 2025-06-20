@@ -1,0 +1,5 @@
+websockets==11.0.3
+alpaca-trade-api==3.0.2
+tenacity==8.2.3
+python-dotenv==1.0.0
+requests==2.31.0
