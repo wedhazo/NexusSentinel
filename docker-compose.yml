@@ -42,6 +42,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      sentiment_service:
+        condition: service_started
+      redis:
+        condition: service_started
     env_file:
       - .env
     environment:
@@ -69,6 +73,65 @@ services:
         limits:
           cpus: '2'
           memory: 2G
+  # FinBERT Sentiment Micro-service
+  sentiment_service:
+    build:
+      context: ./ml_services/sentiment_service
+    container_name: nexussentinel-sentiment
+    restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+    ports:
+      # internal 8000; expose as 8001 on host to avoid clash with main API
+      - "8003:8000"
+    networks:
+      - nexussentinel-network
+
+  # LLaMA 3 Nuanced Sentiment Micro-service (GPU)
+  llama3_sentiment_service:
+    build:
+      context: ./ml_services/llama3_sentiment_service
+    container_name: nexussentinel-llama3-sentiment
+    restart: unless-stopped
+    depends_on:
+      - redis
+    ports:
+      - "8001:8001"   # Service listens on 8001 internally
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - nexussentinel-network
+
+  # LightGBM Trading-Signal Micro-service
+  signal_generator:
+    build:
+      context: ./ml_services/signal_generator
+    container_name: nexussentinel-signal-generator
+    restart: unless-stopped
+    depends_on:
+      - sentiment_service
+      - llama3_sentiment_service
+    ports:
+      - "8002:8002"   # Service listens on 8002 internally
+    networks:
+      - nexussentinel-network
+
+  # Redis cache (shared by API & ML services)
+  redis:
+    image: redis:7-alpine
+    container_name: nexussentinel-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - nexussentinel-network
 
   # pgAdmin (optional, for database management)
   pgadmin:
