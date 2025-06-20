@@ -1,0 +1,8 @@
+streamlit==1.26.0
+websockets==11.0.3
+pandas==2.0.3
+plotly==5.18.0
+requests==2.31.0
+nest-asyncio==1.5.8
+altair==5.1.2
+python-dotenv==1.0.0

@@ -123,6 +123,40 @@ services:
     networks:
       - nexussentinel-network
 
+  # ------------------------------------------------
+  # Auto-Trader Service – executes trades via Alpaca
+  # ------------------------------------------------
+  auto_trader:
+    build:
+      context: ./ml_services/auto_trader
+    container_name: nexussentinel-auto-trader
+    restart: unless-stopped
+    env_file:
+      - ./ml_services/auto_trader/.env  # contains Alpaca keys & TRADE_MODE
+    depends_on:
+      - signal_generator
+      - redis
+    networks:
+      - nexussentinel-network
+
+  # ------------------------------------------------
+  # Streamlit Trading Dashboard (manual / auto switch)
+  # ------------------------------------------------
+  trading_dashboard:
+    build:
+      context: ./ml_services/trading_dashboard
+    container_name: nexussentinel-dashboard
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - auto_trader
+      - redis
+    ports:
+      - "8501:8501"
+    networks:
+      - nexussentinel-network
+
   # Redis cache (shared by API & ML services)
   redis:
     image: redis:7-alpine
@@ -158,6 +192,8 @@ volumes:
     name: nexussentinel-postgres-data
   pgadmin_data:
     name: nexussentinel-pgadmin-data
+  redis_data:
+    name: nexussentinel-redis-data
 
 networks:
   nexussentinel-network:
