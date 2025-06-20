@@ -73,6 +73,9 @@ suite** that runs in separate Docker containers (declared in
 | `ml_services/sentiment_service` | 8000 | FinBERT | Fast financial sentiment (positive / neutral / negative + confidence) with Redis caching |
 | `ml_services/llama3_sentiment_service` | 8001 | LLaMA-3-8B (8-bit) | Deeper, sarcasm-aware sentiment for tricky tweets & long-form text (GPU) |
 | `ml_services/signal_generator` | 8002 | LightGBM | Converts sentiment & technical features into trading actions (BUY / HOLD / SELL) |
+| `ml_services/price_forecast_service` | 8003 | TFT | Multi-horizon price forecasting |
+| `ml_services/websocket_signal_server` | 8004 | WebSocket | Streams real-time trading signals to clients |
+| `ml_services/infra_redis_zmq` | 5556 | ZeroMQ PUB/SUB | High-throughput message bus (optional demo) |
 
 The main API exposes proxy routes:
 
@@ -80,6 +83,8 @@ The main API exposes proxy routes:
 * `POST /api/v1/enhanced-sentiment/analyze-llama` → LLaMA 3  
 * `POST /api/v1/enhanced-sentiment/analyze-consensus` → weighted blend of both  
 * `POST /api/v1/trading-signals/generate` → LightGBM signal
+* `POST /api/v1/price-forecast/forecast` → Temporal Fusion Transformer  
+* WebSocket `ws://<host>:8004` → live trading-signal stream
 
 A visual overview:
 
@@ -88,12 +93,16 @@ React UI ──► FastAPI Gateway
                  │
                  ├──► FinBERT  (CPU, port 8000)
                  ├──► LLaMA-3  (GPU, port 8001)
-                 └──► LightGBM (CPU, port 8002)
+                 ├──► LightGBM (CPU, port 8002)
+                 ├──► TFT       (CPU/GPU, port 8003)
+                 └──► WS Hub    (port 8004) ──► ZeroMQ PUB 5556
 ```
 
 Because each model lives in its own container, you can upgrade or scale them
 individually (e.g. run multiple FinBERT replicas, attach more GPU nodes for
-LLaMA, or deploy only the services you need).
+LLaMA, or deploy only the services you need).  
+Redis (port 6379) is shared for caching; ZeroMQ on 5556 is provided for high-rate
+internal pub/sub and is optional in production.
 
 ---
 

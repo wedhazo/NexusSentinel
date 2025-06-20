@@ -1,0 +1,153 @@
+version: "3.8"
+
+services:
+  # FinBERT Sentiment Micro-service
+  sentiment_service:
+    build:
+      context: ../sentiment_service
+    container_name: nexussentinel-sentiment
+    restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+    ports:
+      - "8000:8000"
+    networks:
+      - nexussentinel-ml-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # LLaMA 3 Nuanced Sentiment Micro-service (GPU)
+  llama3_sentiment_service:
+    build:
+      context: ../llama3_sentiment_service
+    container_name: nexussentinel-llama3-sentiment
+    restart: unless-stopped
+    depends_on:
+      - redis
+    ports:
+      - "8001:8001"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - nexussentinel-ml-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # LightGBM Trading-Signal Micro-service
+  signal_generator:
+    build:
+      context: ../signal_generator
+    container_name: nexussentinel-signal-generator
+    restart: unless-stopped
+    depends_on:
+      - sentiment_service
+    ports:
+      - "8002:8002"
+    networks:
+      - nexussentinel-ml-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Temporal Fusion Transformer Price Forecasting Service
+  price_forecast_service:
+    build:
+      context: ../price_forecast_service
+    container_name: nexussentinel-price-forecast
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    volumes:
+      - ../price_forecast_service/model:/app/model
+    networks:
+      - nexussentinel-ml-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # WebSocket Signal Server
+  websocket_signal_server:
+    build:
+      context: ../websocket_signal_server
+    container_name: nexussentinel-websocket
+    restart: unless-stopped
+    depends_on:
+      - sentiment_service
+      - signal_generator
+    ports:
+      - "8004:8004"  # WebSocket port
+      - "8005:8005"  # Health check port
+    networks:
+      - nexussentinel-ml-network
+
+  # Redis cache (shared by ML services)
+  redis:
+    image: redis:7-alpine
+    container_name: nexussentinel-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - nexussentinel-ml-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # ZeroMQ Publisher
+  zmq_publisher:
+    build:
+      context: ../infra_redis_zmq
+    container_name: nexussentinel-zmq-publisher
+    restart: unless-stopped
+    command: publisher.py
+    ports:
+      - "5556:5556"
+    networks:
+      - nexussentinel-ml-network
+
+  # ZeroMQ Subscriber
+  zmq_subscriber:
+    build:
+      context: ../infra_redis_zmq
+    container_name: nexussentinel-zmq-subscriber
+    restart: unless-stopped
+    command: subscriber.py
+    depends_on:
+      - zmq_publisher
+    networks:
+      - nexussentinel-ml-network
+
+volumes:
+  redis_data:
+    name: nexussentinel-redis-data
+
+networks:
+  nexussentinel-ml-network:
+    name: nexussentinel-ml-network
+    driver: bridge
