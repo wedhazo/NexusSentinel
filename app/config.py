@@ -122,6 +122,8 @@ class Settings(BaseSettings):
     SENTIMENT_API_KEY: Optional[str] = None
     MARKET_DATA_API_URL: Optional[AnyHttpUrl] = None
     MARKET_DATA_API_KEY: Optional[str] = None
+    # Polygon.io API key for daily OHLCV ingestion
+    POLYGON_API_KEY: Optional[str] = None
     
     # Feature flags
     ENABLE_SENTIMENT_ANALYSIS: bool = True
