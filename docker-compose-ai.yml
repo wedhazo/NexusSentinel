@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # FinBERT Sentiment Analysis Service
+  finbert-service:
+    build:
+      context: ./finbert
+      dockerfile: Dockerfile
+    container_name: finbert-service
+    restart: unless-stopped
+    environment:
+      - MODEL_PATH=/app/models/finbert
+      - MODEL_SOURCE=LOCAL
+      - GCS_BUCKET=financial-models
+      - GCS_PATH=finbert
+      - PORT=8001
+    volumes:
+      - ./models/finbert:/app/models/finbert:ro
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - ai-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  # LightGBM Trading Signal Service
+  lightgbm-service:
+    build:
+      context: ./lightgbm
+      dockerfile: Dockerfile
+    container_name: lightgbm-service
+    restart: unless-stopped
+    environment:
+      - MODEL_PATH=/app/models/lightgbm/model.txt
+      - FEATURE_LIST_PATH=/app/models/lightgbm/feature_list.json
+      - MODEL_SOURCE=LOCAL
+      - GCS_BUCKET=financial-models
+      - GCS_PATH=lightgbm/model.txt
+      - PORT=8002
+    volumes:
+      - ./models/lightgbm:/app/models/lightgbm:ro
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - ai-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+
+  # TFT Price Forecasting Service
+  tft-service:
+    build:
+      context: ./tft
+      dockerfile: Dockerfile
+    container_name: tft-service
+    restart: unless-stopped
+    environment:
+      - MODEL_PATH=/app/models/tft/tft_model.pt
+      - CONFIG_PATH=/app/models/tft/model_config.json
+      - DATASET_PARAMS_PATH=/app/models/tft/dataset_parameters.json
+      - MODEL_SOURCE=LOCAL
+      - GCS_BUCKET=financial-models
+      - GCS_MODEL_PATH=tft/tft_model.pt
+      - GCS_CONFIG_PATH=tft/model_config.json
+      - GCS_DATASET_PARAMS_PATH=tft/dataset_parameters.json
+      - PORT=8003
+    volumes:
+      - ./models/tft:/app/models/tft:ro
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - ai-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+networks:
+  ai-network:
+    name: stock-ai-network
+    driver: bridge

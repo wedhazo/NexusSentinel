@@ -1,0 +1,87 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir google-cloud-storage torch transformers fastapi uvicorn
+
+# Create directories for model and logs
+RUN mkdir -p /app/models /app/logs
+
+# Copy application code
+COPY app.py .
+COPY startup.sh .
+RUN chmod +x startup.sh
+
+# Environment variables
+ENV MODEL_PATH=/app/models/finbert
+ENV MODEL_SOURCE=LOCAL
+ENV GCS_BUCKET=financial-models
+ENV GCS_PATH=finbert
+ENV PORT=8001
+ENV PYTHONUNBUFFERED=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:${PORT}/health || exit 1
+
+# Expose port
+EXPOSE ${PORT}
+
+# Create startup script that handles model downloading and starts the app
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# Download model from GCS if needed\n\
+if [ "$MODEL_SOURCE" = "GCS" ]; then\n\
+  echo "Downloading model from GCS bucket: ${GCS_BUCKET}, path: ${GCS_PATH}"\n\
+  python -c "\
+import os\n\
+from google.cloud import storage\n\
+\n\
+# Setup client\n\
+storage_client = storage.Client()\n\
+bucket = storage_client.bucket(os.environ[\"GCS_BUCKET\"])\n\
+\n\
+# Create model directory\n\
+os.makedirs(os.environ[\"MODEL_PATH\"], exist_ok=True)\n\
+\n\
+# List all blobs with the prefix\n\
+blobs = list(bucket.list_blobs(prefix=os.environ[\"GCS_PATH\"] + \"/\"))\n\
+\n\
+# Download each file\n\
+for blob in blobs:\n\
+    # Skip the directory itself\n\
+    if blob.name.endswith(\"/\"):\n\
+        continue\n\
+        \n\
+    # Get the relative path\n\
+    rel_path = blob.name[len(os.environ[\"GCS_PATH\"]) + 1:]\n\
+    if rel_path:\n\
+        # Create the directory structure\n\
+        dest_file = os.path.join(os.environ[\"MODEL_PATH\"], rel_path)\n\
+        os.makedirs(os.path.dirname(dest_file), exist_ok=True)\n\
+        \n\
+        # Download the file\n\
+        blob.download_to_filename(dest_file)\n\
+        print(f\"Downloaded {blob.name} to {dest_file}\")\n\
+"\n\
+  echo "Model download complete"\n\
+fi\n\
+\n\
+# Start the application\n\
+exec uvicorn app:app --host 0.0.0.0 --port ${PORT}\n\
+' > /app/startup.sh
+
+# Run the startup script
+CMD ["/app/startup.sh"]

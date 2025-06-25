@@ -1,0 +1,121 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+FinBERT Sentiment Analysis API
+
+This FastAPI application serves a dummy FinBERT model for financial sentiment analysis.
+It provides a simple endpoint for predicting sentiment from financial text.
+"""
+
+import os
+import logging
+import time
+import random
+from typing import Dict, Any, Optional
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+)
+logger = logging.getLogger(__name__)
+
+# Global variables
+is_model_ready = True  # Dummy model is always ready
+
+# Pydantic models for request/response
+class SentimentRequest(BaseModel):
+    text: str = Field(..., description="Financial text to analyze", example="Apple's stock surged after strong earnings report")
+    
+class SentimentResponse(BaseModel):
+    text: str
+    sentiment: str
+    score: float
+    processing_time: float
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="FinBERT Financial Sentiment Analysis",
+    description="API for analyzing sentiment in financial texts using FinBERT",
+    version="1.0.0",
+)
+
+def predict_sentiment(text: str) -> Dict[str, Any]:
+    """
+    Dummy sentiment prediction function.
+    
+    Args:
+        text: Financial text to analyze
+        
+    Returns:
+        Dictionary with sentiment prediction results
+    """
+    start_time = time.time()
+    
+    # Dummy sentiment analysis logic
+    # In a real implementation, this would use the FinBERT model
+    
+    # Simple keyword-based sentiment analysis for demonstration
+    positive_keywords = ["surge", "rise", "gain", "profit", "growth", "up", "positive", "strong"]
+    negative_keywords = ["drop", "fall", "loss", "decline", "down", "negative", "weak", "poor"]
+    
+    text_lower = text.lower()
+    
+    # Count positive and negative keywords
+    positive_count = sum(1 for word in positive_keywords if word in text_lower)
+    negative_count = sum(1 for word in negative_keywords if word in text_lower)
+    
+    # Determine sentiment based on keyword counts
+    if positive_count > negative_count:
+        sentiment = "positive"
+        score = min(0.5 + (positive_count - negative_count) * 0.1, 0.95)
+    elif negative_count > positive_count:
+        sentiment = "negative"
+        score = min(0.5 + (negative_count - positive_count) * 0.1, 0.95)
+    else:
+        sentiment = "neutral"
+        score = 0.5
+    
+    # Add slight randomness to make it more realistic
+    score = min(max(score + random.uniform(-0.05, 0.05), 0.1), 0.99)
+    
+    processing_time = time.time() - start_time
+    
+    return {
+        "text": text,
+        "sentiment": sentiment,
+        "score": score,
+        "processing_time": round(processing_time, 3)
+    }
+
+@app.post("/predict-finbert", response_model=SentimentResponse)
+async def predict(request: SentimentRequest):
+    """
+    Analyze the sentiment of financial text using FinBERT.
+    
+    Returns sentiment label (positive, negative, neutral) and confidence score.
+    """
+    try:
+        result = predict_sentiment(request.text)
+        return result
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "model": "finbert-dummy",
+        "details": "This is a dummy implementation for development purposes"
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    # Run the API server
+    uvicorn.run("app:app", host="0.0.0.0", port=8001, reload=False)
